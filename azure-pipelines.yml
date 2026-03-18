@@ -1,0 +1,150 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/**
+      - scripts/**
+      - gitops/bootstrap/**
+      - gitops/apps/**
+      - azure-pipelines.yml
+      - README.md
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/**
+      - scripts/**
+      - gitops/bootstrap/**
+      - gitops/apps/**
+      - azure-pipelines.yml
+      - README.md
+
+variables:
+  terraformVersion: "1.9.8"
+  terraformWorkingDirectory: "terraform"
+  terraformVarsFile: "envs/dev/terraform.tfvars"
+  terraformPlanFilename: "terraform.tfplan"
+  azureServiceConnection: "azure-platform-sp"
+  tfStateResourceGroup: "rg-tfstate-shared"
+  tfStateStorageAccount: "tfstatechangeme"
+  tfStateContainer: "tfstate"
+  tfStateKey: "cloud-terraform/dev.tfstate"
+
+stages:
+  - stage: ValidatePlan
+    displayName: Validate and plan
+    jobs:
+      - job: terraform_plan
+        displayName: Terraform plan
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+
+          - bash: |
+              set -euo pipefail
+              curl -fsSLo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+              unzip -o terraform.zip
+              sudo mv terraform /usr/local/bin/terraform
+              terraform version
+            displayName: Install Terraform
+            env:
+              TERRAFORM_VERSION: $(terraformVersion)
+
+          - task: AzureCLI@2
+            displayName: Terraform fmt, init, validate, and plan
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(terraformWorkingDirectory)
+              inlineScript: |
+                set -euo pipefail
+
+                export ARM_USE_AZUREAD=true
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
+
+                terraform fmt -check -recursive
+
+                terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=$(tfStateKey)" \
+                  -backend-config="use_azuread_auth=true"
+
+                terraform validate
+
+                terraform plan \
+                  -input=false \
+                  -out="$(Pipeline.Workspace)/$(terraformPlanFilename)" \
+                  -var-file="$(terraformVarsFile)"
+
+                terraform show -no-color "$(Pipeline.Workspace)/$(terraformPlanFilename)" > "$(Pipeline.Workspace)/terraform-plan.txt"
+
+          - publish: $(Pipeline.Workspace)/$(terraformPlanFilename)
+            artifact: terraform-plan-binary
+
+          - publish: $(Pipeline.Workspace)/terraform-plan.txt
+            artifact: terraform-plan-text
+
+  - stage: Apply
+    displayName: Apply
+    dependsOn: ValidatePlan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: terraform_apply
+        displayName: Terraform apply
+        environment: "aks-platform-dev"
+        pool:
+          vmImage: "ubuntu-latest"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - bash: |
+                    set -euo pipefail
+                    curl -fsSLo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+                    unzip -o terraform.zip
+                    sudo mv terraform /usr/local/bin/terraform
+                    terraform version
+                  displayName: Install Terraform
+                  env:
+                    TERRAFORM_VERSION: $(terraformVersion)
+
+                - download: current
+                  artifact: terraform-plan-binary
+
+                - task: AzureCLI@2
+                  displayName: Terraform init and apply
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    workingDirectory: $(terraformWorkingDirectory)
+                    inlineScript: |
+                      set -euo pipefail
+
+                      export ARM_USE_AZUREAD=true
+                      export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                      export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
+
+                      terraform init \
+                        -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                        -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                        -backend-config="container_name=$(tfStateContainer)" \
+                        -backend-config="key=$(tfStateKey)" \
+                        -backend-config="use_azuread_auth=true"
+
+                      terraform apply \
+                        -input=false \
+                        -auto-approve \
+                        "$(Pipeline.Workspace)/terraform-plan-binary/$(terraformPlanFilename)"

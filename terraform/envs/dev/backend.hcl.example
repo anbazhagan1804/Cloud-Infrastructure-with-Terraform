@@ -1,0 +1,5 @@
+resource_group_name  = "rg-tfstate-shared"
+storage_account_name = "tfstateexample1234"
+container_name       = "tfstate"
+key                  = "cloud-terraform/dev.tfstate"
+use_azuread_auth     = true

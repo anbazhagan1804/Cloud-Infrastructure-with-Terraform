@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cloud Terraform Platform</title>
+  <style>
+    :root {
+      --ink: #ebf4ff;
+      --midnight: #07111f;
+      --teal: #1ec8a5;
+      --sky: #3b82f6;
+      --sand: rgba(255, 255, 255, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(30, 200, 165, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.22), transparent 32%),
+        linear-gradient(135deg, #020617, #07111f 55%, #10213d);
+      font-family: Georgia, "Times New Roman", serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    main {
+      width: min(960px, 100%);
+      display: grid;
+      gap: 24px;
+      padding: 32px;
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(7, 17, 31, 0.94), rgba(16, 33, 61, 0.86));
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 30px 80px rgba(2, 6, 23, 0.45);
+    }
+
+    .eyebrow {
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--teal);
+      font-size: 0.85rem;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(2.6rem, 6vw, 5rem);
+      line-height: 0.95;
+      margin: 0;
+      max-width: 10ch;
+    }
+
+    .lede {
+      margin: 0;
+      max-width: 58ch;
+      line-height: 1.7;
+      font-size: 1.05rem;
+      color: rgba(235, 244, 255, 0.86);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--sand);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1rem;
+      color: white;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95rem;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Azure + Terraform + Argo CD</p>
+    <h1>Platform delivery that ships itself.</h1>
+    <p class="lede">
+      This demo application is built in Azure DevOps, pushed to Azure Container Registry,
+      and deployed to AKS by Argo CD from the manifests in <code>gitops/workloads/demo</code>.
+    </p>
+    <section class="grid">
+      <article class="card">
+        <strong>Provisioned with Terraform</strong>
+        Networks, observability, ACR, and AKS are all created from the <code>terraform/</code> folder.
+      </article>
+      <article class="card">
+        <strong>Delivered with GitOps</strong>
+        Argo CD continuously syncs this workload from Git and reconciles drift automatically.
+      </article>
+      <article class="card">
+        <strong>Ready for extension</strong>
+        Add Helm charts, ingress, cert-manager, or external secrets without changing the core flow.
+      </article>
+    </section>
+  </main>
+</body>
+</html>

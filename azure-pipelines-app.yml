@@ -1,0 +1,109 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - app/**
+      - scripts/publish-demo-image.ps1
+      - scripts/set-demo-image.ps1
+      - azure-pipelines-app.yml
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - app/**
+      - scripts/publish-demo-image.ps1
+      - scripts/set-demo-image.ps1
+      - azure-pipelines-app.yml
+
+variables:
+  terraformVersion: "1.9.8"
+  azureServiceConnection: "azure-platform-sp"
+  tfStateResourceGroup: "rg-tfstate-shared"
+  tfStateStorageAccount: "tfstatechangeme"
+  tfStateContainer: "tfstate"
+  tfStateKey: "cloud-terraform/dev.tfstate"
+
+stages:
+  - stage: ValidateImage
+    displayName: Validate demo image
+    jobs:
+      - job: docker_build
+        displayName: Docker build
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+
+          - bash: |
+              set -euo pipefail
+              docker build --tag cloudtf-demo:test ./app
+            displayName: Build demo image
+
+  - stage: PublishAndUpdateGitOps
+    displayName: Publish image and update GitOps
+    dependsOn: ValidateImage
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: publish_image
+        displayName: Push image to ACR and update manifest tag
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            persistCredentials: true
+
+          - bash: |
+              set -euo pipefail
+              curl -fsSLo terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+              unzip -o terraform.zip
+              sudo mv terraform /usr/local/bin/terraform
+              terraform version
+            displayName: Install Terraform
+            env:
+              TERRAFORM_VERSION: $(terraformVersion)
+
+          - task: AzureCLI@2
+            displayName: Build, push, and promote demo image
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                export ARM_USE_AZUREAD=true
+                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+                export ARM_TENANT_ID="$(az account show --query tenantId -o tsv)"
+
+                terraform -chdir=terraform init \
+                  -backend-config="resource_group_name=$(tfStateResourceGroup)" \
+                  -backend-config="storage_account_name=$(tfStateStorageAccount)" \
+                  -backend-config="container_name=$(tfStateContainer)" \
+                  -backend-config="key=$(tfStateKey)" \
+                  -backend-config="use_azuread_auth=true"
+
+                ACR_NAME="$(terraform -chdir=terraform output -raw acr_name)"
+                ACR_LOGIN_SERVER="$(terraform -chdir=terraform output -raw acr_login_server)"
+                IMAGE_TAG="$(Build.BuildId)"
+
+                az acr login --name "$ACR_NAME"
+                docker build --tag "$ACR_LOGIN_SERVER/cloudtf-demo:$IMAGE_TAG" ./app
+                docker push "$ACR_LOGIN_SERVER/cloudtf-demo:$IMAGE_TAG"
+
+                pwsh ./scripts/set-demo-image.ps1 \
+                  -ImageRepository "$ACR_LOGIN_SERVER/cloudtf-demo" \
+                  -ImageTag "$IMAGE_TAG"
+
+                git config user.email "azuredevops@local"
+                git config user.name "Azure DevOps"
+
+                if ! git diff --quiet -- gitops/workloads/demo/overlays/dev/kustomization.yaml; then
+                  git add gitops/workloads/demo/overlays/dev/kustomization.yaml
+                  git commit -m "chore: deploy demo image $IMAGE_TAG [skip ci]"
+                  git push origin HEAD:main
+                fi
