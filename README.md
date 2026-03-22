@@ -50,8 +50,10 @@ flowchart LR
 - Terraform 1.7 or newer
 - Azure CLI
 - Docker
+- Git
 - kubectl
 - Helm 3
+- A GitHub personal access token with repo write access, stored as the secret pipeline variable `githubPushToken`
 
 ## Quick Start
 
@@ -91,7 +93,7 @@ You can do this locally once or let the application pipeline handle it after you
   -ImageTag latest
 ```
 
-This builds the app from `app/`, pushes it to ACR, and updates the dev GitOps overlay to use that image.
+This builds the app from `app/`, pushes it to ACR, and tags the image as `latest`. The application pipeline also tags each build with `$(Build.BuildId)` and updates GitOps to that immutable tag.
 
 ### 4. Configure GitOps and Bootstrap Argo CD
 
@@ -99,10 +101,13 @@ This builds the app from `app/`, pushes it to ACR, and updates the dev GitOps ov
 .\scripts\bootstrap-argocd.ps1 `
   -AksResourceGroup <terraform-output-resource-group> `
   -AksClusterName <terraform-output-cluster-name> `
-  -GitOpsRepoUrl https://dev.azure.com/<org>/<project>/_git/<repo> `
   -AcrLoginServer <terraform-output-acr-login-server> `
+  -GitHubToken <github-pat> `
+  -GitOpsRepoUrl https://github.com/<owner>/<repo>.git `
   -ImageTag latest
 ```
+
+If you are using this repository without forking or renaming it, you can omit `-GitOpsRepoUrl` and keep the committed default.
 
 ### 5. Verify the Platform
 
@@ -133,8 +138,8 @@ The `Apply` stage targets the Azure DevOps environment `aks-platform-dev`, so yo
 The application pipeline lives in `azure-pipelines-app.yml` and does three things on `main`:
 
 1. Builds the demo container image from `app/`
-2. Pushes the image to the ACR created by Terraform
-3. Updates `gitops/workloads/demo/overlays/dev/kustomization.yaml` with the new image tag and commits that change back to `main`
+2. Pushes the image to the ACR created by Terraform with both `latest` and `$(Build.BuildId)` tags
+3. Updates `gitops/workloads/demo/overlays/dev/kustomization.yaml` with the build tag and commits that change back to `main`
 
 It uses the same backend variables as the infrastructure pipeline so it can read `terraform output` values from remote state.
 
@@ -144,11 +149,12 @@ It uses the same backend variables as the infrastructure pipeline so it can read
 - `scripts/connect-aks.ps1`: fetches AKS admin kubeconfig
 - `scripts/publish-demo-image.ps1`: builds and pushes the demo image to ACR
 - `scripts/set-demo-image.ps1`: updates the GitOps overlay image repository and tag
-- `scripts/configure-gitops.ps1`: updates Argo CD repo URLs and the demo image repository
+- `scripts/configure-gitops.ps1`: updates and pushes GitOps manifest changes to GitHub
 - `scripts/bootstrap-argocd.ps1`: installs Argo CD and applies the root application
 
 ## Notes
 
 - The AKS module now assigns `AcrPull` to the kubelet identity, which is the identity that actually pulls images from ACR.
+- The GitOps bootstrap and app pipeline now push their manifest changes back to GitHub using a PAT stored as `githubPushToken`.
 - The current machine did not have Terraform or Azure CLI installed, so the repository was validated with Kubernetes manifest rendering and PowerShell parsing, but not with a live Azure deployment.
 - The first successful image push should happen before expecting the demo workload to become healthy in AKS.

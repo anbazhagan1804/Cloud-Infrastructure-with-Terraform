@@ -45,5 +45,5 @@ output "publish_demo_image_command" {
 
 output "argocd_bootstrap_command" {
   description = "PowerShell command to install Argo CD and apply the root GitOps application."
-  value       = ".\\scripts\\bootstrap-argocd.ps1 -AksResourceGroup ${module.resource_group.name} -AksClusterName ${module.aks.name} -GitOpsRepoUrl <your-repo-url> -AcrLoginServer ${module.registry.login_server} -ImageTag latest"
+  value       = ".\\scripts\\bootstrap-argocd.ps1 -AksResourceGroup ${module.resource_group.name} -AksClusterName ${module.aks.name} -AcrLoginServer ${module.registry.login_server} -GitHubToken <github-pat> -GitOpsRepoUrl <your-gitops-repo-url> -ImageTag latest"
 }

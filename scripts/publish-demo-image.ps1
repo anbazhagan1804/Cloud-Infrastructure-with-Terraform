@@ -23,12 +23,15 @@ if (-not $AcrName) {
 }
 
 $imageRepository = "$AcrLoginServer/cloudtf-demo"
-$imageReference = "$imageRepository`:$ImageTag"
+$tagsToPush = @($ImageTag)
+if ($ImageTag -ne "latest") {
+    $tagsToPush += "latest"
+}
 
 az acr login --name $AcrName | Out-Null
 
 docker build `
-    --tag $imageReference `
+    --tag "$imageRepository`:$ImageTag" `
     --file (Join-Path $repoRoot "app\\Dockerfile") `
     (Join-Path $repoRoot "app")
 
@@ -36,14 +39,19 @@ if ($LASTEXITCODE -ne 0) {
     throw "Docker build failed."
 }
 
-docker push $imageReference
+foreach ($tag in $tagsToPush) {
+    $reference = "$imageRepository`:$tag"
+    if ($tag -ne $ImageTag) {
+        docker tag "$imageRepository`:$ImageTag" $reference
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker tag failed for $reference."
+        }
+    }
 
-if ($LASTEXITCODE -ne 0) {
-    throw "Docker push failed."
+    docker push $reference
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker push failed for $reference."
+    }
 }
 
-& (Join-Path $PSScriptRoot "set-demo-image.ps1") `
-    -ImageRepository $imageRepository `
-    -ImageTag $ImageTag
-
-Write-Host "Published demo image: $imageReference"
+Write-Host "Published demo image: $imageRepository`:$ImageTag"

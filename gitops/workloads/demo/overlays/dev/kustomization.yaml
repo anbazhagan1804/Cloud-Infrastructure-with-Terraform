@@ -9,5 +9,5 @@ commonAnnotations:
 
 images:
   - name: cloudtf-demo
-    newName: example.azurecr.io/cloudtf-demo
+    newName: __ACR_LOGIN_SERVER__/cloudtf-demo
     newTag: latest

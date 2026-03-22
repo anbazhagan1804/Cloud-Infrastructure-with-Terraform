@@ -6,13 +6,16 @@ param(
     [string]$AksClusterName,
 
     [Parameter(Mandatory = $true)]
-    [string]$GitOpsRepoUrl,
-
-    [Parameter(Mandatory = $true)]
     [string]$AcrLoginServer,
 
     [Parameter(Mandatory = $false)]
     [string]$ImageTag = "latest",
+
+    [Parameter(Mandatory = $true)]
+    [string]$GitHubToken,
+
+    [Parameter(Mandatory = $false)]
+    [string]$GitOpsRepoUrl,
 
     [Parameter(Mandatory = $false)]
     [string]$ArgocdNamespace = "argocd"
@@ -21,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-foreach ($command in @("az", "helm", "kubectl")) {
+foreach ($command in @("az", "helm", "kubectl", "git")) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
         throw "$command is required. Install it first, then rerun this script."
     }
@@ -30,7 +33,8 @@ foreach ($command in @("az", "helm", "kubectl")) {
 & (Join-Path $PSScriptRoot "configure-gitops.ps1") `
     -GitOpsRepoUrl $GitOpsRepoUrl `
     -AcrLoginServer $AcrLoginServer `
-    -ImageTag $ImageTag
+    -ImageTag $ImageTag `
+    -GitHubToken $GitHubToken
 
 az aks get-credentials `
     --resource-group $AksResourceGroup `
@@ -48,6 +52,7 @@ helm upgrade --install argocd argo/argo-cd `
     --wait `
     --timeout 10m | Out-Null
 
+kubectl apply -f (Join-Path $repoRoot "gitops\\apps\\platform-project.yaml")
 kubectl rollout status deployment/argocd-server -n $ArgocdNamespace --timeout=300s
 kubectl rollout status deployment/argocd-applicationset-controller -n $ArgocdNamespace --timeout=300s
 kubectl apply -f (Join-Path $repoRoot "gitops\\bootstrap\\root-application.yaml")
